@@ -1,0 +1,15 @@
+^.*\.bak$
+^.*\.log$
+^\.git.*
+^\.perlcriticrc$
+^\.perltidyrc$
+^\.travis\.yml$
+^CONTRIBUTING\.md$
+^DEPRECATED\.md$
+^Makefile$
+^MYMETA\.*
+^PULL_REQUEST_TEMPLATE\.md$
+^blib/
+^local/
+^pm_to_blib$
+^travisci/
