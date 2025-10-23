@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+BEGIN { $ENV{ENSEMBL_NO_XS_INTERVAL_TREE} = 1; }
 
 use strict;
 use warnings;

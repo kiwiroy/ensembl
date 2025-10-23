@@ -55,8 +55,9 @@ Class representing a dynamic, i.e. mutable, interval tree implemented as an augm
 This module is a wrapper around two possible implementations: one using the Perl extension (XS) mechanisms, and
 a pure Perl (PP) one. 
 
-The module is capable of detecting whether the XS module is available and it loads it in that
-case; it falls back to the PP implementation otherwise.
+For better performance the optional module L<Bio::EnsEMBL::XS::Utils::Tree::Interval::Mutable> will be used
+automatically if possible. This can also be disabled with the C<ENSEMBL_NO_XS_INTERVAL_TREE> environment
+variable to fall back to the PP implementation.
  
 =head1 METHODS
 
@@ -68,29 +69,34 @@ use strict;
 
 use Bio::EnsEMBL::Utils::Scalar qw(assert_ref);
 use Bio::EnsEMBL::Utils::Exception qw(throw warning info);
+use Bio::EnsEMBL::Utils::Tree::Interval::Mutable::PP ();
+use Sub::Util ();
+
+# if XS is used, version at least 1.3.1 is required (provides the interval tree library)
+use constant BIO_ENSEMBL_XS => $ENV{ENSEMBL_NO_XS_INTERVAL_TREE}
+  ? 0 # ----- can not use variables in the eval below -----
+  : !!eval { require Bio::EnsEMBL::XS::Utils::Tree::Interval::Mutable; Bio::EnsEMBL::XS::Utils::Tree::Interval::Mutable->VERSION('1.3.1'); 1; };
 
 # the modules providing the underlying implementation,
 # either XS or pure perl fallback
 my $XS = 'Bio::EnsEMBL::XS::Utils::Tree::Interval::Mutable';
 my $PP = 'Bio::EnsEMBL::Utils::Tree::Interval::Mutable::PP';
 
-# if XS is used, version at least 1.3.1 is required (provides the interval tree library)
-my $VERSION_XS = '1.3.1';
-
 my @public_methods = qw/ insert search remove size /;
 
-# import either XS or PP methods into namespace
-unless ($Bio::EnsEMBL::Utils::Tree::Interval::Mutable::IMPL) {
-  # first check if XS is available and try to load it,
-  # otherwise fall back to PP implementation
-  _load_xs() or _load_pp() or throw "Couldn't load implementation: $@";
+for my $func(@public_methods) {
+  my $sub = BIO_ENSEMBL_XS ? $XS->can($func) : $PP->can($func);
+  no strict 'refs'; ## no critic
+  *$func = Sub::Util::set_subname __PACKAGE__ . "::$func", $sub;
 }
 
+# so internal methods are called in the right package after reblessing
+push our @ISA, BIO_ENSEMBL_XS ? $XS : $PP;
 
 =head2 new
 
   Arg []      : none
-  Example     : my $tree = Bio::EnsEMBL::Utils::Tree::Mutable();
+  Example     : my $tree = Bio::EnsEMBL::Utils::Tree::Mutable->new();
   Description : Constructor. Creates a new mutable tree instance
   Returntype  : Bio::EnsEMBL::Utils::Tree::Interval::Mutable
   Exceptions  : none
@@ -99,49 +105,8 @@ unless ($Bio::EnsEMBL::Utils::Tree::Interval::Mutable::IMPL) {
 =cut
 
 sub new {
-  my $caller = shift;
-  my $class = ref($caller) || $caller;
-
-  # for ($XS|$PP)::new(0);
-  return eval qq| $Bio::EnsEMBL::Utils::Tree::Interval::Mutable::IMPL\::new( \$caller ) | unless $caller; ## no critic
-
-  if (my $self = $Bio::EnsEMBL::Utils::Tree::Interval::Mutable::IMPL->new(@_)) {
-    $self->{_IMPL} = $Bio::EnsEMBL::Utils::Tree::Interval::Mutable::IMPL;
-    bless($self, $class);
-    return $self
-  }
-
-  return;
-}
-
-sub _load_xs {
-  _load($XS, $VERSION_XS);
-}
-
-sub _load_pp {
-  _load($PP);
-}
-
-sub _load {
-  my ($module, $version) = @_;
-  $version ||= '';
-
-  eval qq| use $module $version |; ## no critic
-  info(sprintf("Cannot load %s interval tree implementation", $module eq $XS?'XS':'PP'), 2000)
-    and return if $@;
-
-  push @Bio::EnsEMBL::Utils::Tree::Interval::Mutable::ISA, $module;
-  $Bio::EnsEMBL::Utils::Tree::Interval::Mutable::IMPL = $module;
-
-  local $^W;
-  no strict qw(refs); ## no critic
-
-  for my $method (@public_methods) {
-    *{"Bio::EnsEMBL::Utils::Tree::Interval::Mutable::$method"} = \&{"$module\::$method"};
-  }
-  
-  return 1;
+  my $self = shift;
+  return bless($self->SUPER::new(@_), ref($self) || $self);
 }
 
 1;
-
